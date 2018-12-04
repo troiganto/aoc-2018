@@ -183,11 +183,11 @@ fn build_sleep_schedules(events: &[Event]) -> Result<Schedule, ScheduleError> {
     Ok(schedule)
 }
 
-fn find_sleepiest_minute(sleep_intervals: &[(Time, Time)]) -> u8 {
+fn tally_sleep_minutes(sleep_intervals: &[(Time, Time)]) -> [u16; 60] {
     let mut tally = [0; 60];
     let common_hour = match sleep_intervals.first() {
         Some(&(Time { hour, .. }, Time { .. })) => hour,
-        None => return 0,
+        None => return tally,
     };
     for &(begin, end) in sleep_intervals {
         assert!(begin.hour == common_hour);
@@ -197,12 +197,46 @@ fn find_sleepiest_minute(sleep_intervals: &[(Time, Time)]) -> u8 {
         }
     }
     tally
+}
+
+fn strategy1(schedule: &Schedule) {
+    let guard = schedule
+        .iter()
+        .max_by_key(|(_, times)| {
+            times
+                .iter()
+                .cloned()
+                .map(|(begin, end)| end.minutes_since(begin).unwrap() as u32)
+                .sum::<u32>()
+        })
+        .map(|(id, _)| id)
+        .unwrap();
+    let minute = tally_sleep_minutes(&schedule[guard])
         .iter()
         .cloned()
         .enumerate()
-        .max_by_key(|&(_, value)| value)
+        .max_by_key(|&(_, count)| count)
         .map(|(i, _)| i as u8)
-        .unwrap()
+        .unwrap();
+    println!("strategy 1: {}", guard.0 * minute as u32);
+}
+
+fn strategy2(schedule: &Schedule) {
+    let (guard, minute) = schedule
+        .iter()
+        .map(|(guard, times)| {
+            let (minute, count) = tally_sleep_minutes(times)
+                .iter()
+                .cloned()
+                .enumerate()
+                .max_by_key(|&(_, count)| count)
+                .unwrap();
+            (guard, minute, count)
+        })
+        .max_by_key(|&(_, _, count)| count)
+        .map(|(guard, minute, _)| (guard, minute))
+        .unwrap();
+    println!("strategy 2: {}", guard.0 * minute as u32);
 }
 
 fn main() {
@@ -216,17 +250,6 @@ fn main() {
         .unwrap();
     events.sort_by_key(|event| event.stamp);
     let schedule = build_sleep_schedules(&events).unwrap();
-    let sleepiest_guard = schedule
-        .iter()
-        .max_by_key(|(_, times)| {
-            times
-                .iter()
-                .cloned()
-                .map(|(begin, end)| end.minutes_since(begin).unwrap() as u32)
-                .sum::<u32>()
-        })
-        .map(|(id, _)| id)
-        .unwrap();
-    let sleepiest_minute = find_sleepiest_minute(&schedule[sleepiest_guard]);
-    println!("answer: {}", sleepiest_guard.0 * sleepiest_minute as u32);
+    strategy1(&schedule);
+    strategy2(&schedule);
 }
