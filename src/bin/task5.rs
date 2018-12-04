@@ -1,5 +1,6 @@
 use std::{
     cmp::max,
+    collections::HashMap,
     io::{self, BufRead},
     num::ParseIntError,
     ops::{Index, IndexMut},
@@ -62,7 +63,7 @@ impl<T> IndexMut<(usize, usize)> for Map<T> {
 }
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct Rectangle {
     id: usize,
     x: usize,
@@ -71,15 +72,30 @@ struct Rectangle {
     height: usize,
 }
 
-#[derive(Debug, Clone)]
-struct NotARectangle;
+impl Rectangle {
+    fn left(&self) -> usize {
+        self.x
+    }
 
-impl From<ParseIntError> for NotARectangle {
-    fn from(_: ParseIntError) -> Self {
-        NotARectangle
+    fn top(&self) -> usize {
+        self.y
+    }
+
+    fn right(&self) -> usize {
+        self.x + self.width
+    }
+
+    fn bottom(&self) -> usize {
+        self.y + self.height
+    }
+
+    fn intersects(&self, other: &Rectangle) -> bool {
+        self.right() >= other.left()
+            && other.right() >= self.left()
+            && self.bottom() >= other.top()
+            && other.bottom() >= self.top()
     }
 }
-
 
 impl std::str::FromStr for Rectangle {
     type Err = NotARectangle;
@@ -108,6 +124,52 @@ impl std::str::FromStr for Rectangle {
     }
 }
 
+#[derive(Debug, Clone)]
+struct NotARectangle;
+
+impl From<ParseIntError> for NotARectangle {
+    fn from(_: ParseIntError) -> Self {
+        NotARectangle
+    }
+}
+
+fn task_5(rectangles: &[Rectangle]) {
+    let (width, height) = rectangles.iter().fold((0, 0), |(width, height), rect| {
+        let width = max(width, rect.x + rect.width);
+        let height = max(height, rect.y + rect.height);
+        (width, height)
+    });
+    let mut map = Map::<u16>::new(width, height);
+    for rect in rectangles {
+        map.with_rectangle_mut(rect, |count| *count += 1);
+    }
+    let overlapped_area = map.cells().iter().cloned().filter(|&x| x > 1).count();
+    println!("overlapped area: {}", overlapped_area);
+}
+
+fn task_6(rectangles: &[Rectangle]) {
+    let mut seen = HashMap::new();
+    for rect in rectangles {
+        let intersects = seen
+            .iter_mut()
+            .fold(false, |intersects, (seen, seen_intersects)| {
+                if rect.intersects(seen) {
+                    *seen_intersects = true;
+                    true
+                } else {
+                    intersects
+                }
+            });
+        seen.insert(rect.clone(), intersects);
+    }
+    println!("disjoint from all:");
+    for (rect, intersects) in &seen {
+        if !intersects {
+            println!("#{}", rect.id);
+        }
+    }
+}
+
 fn main() {
     let stdin = io::stdin();
     let rectangles = stdin
@@ -117,16 +179,6 @@ fn main() {
         .map(|line| line.parse())
         .collect::<Result<Vec<Rectangle>, NotARectangle>>()
         .unwrap();
-    let (width, height) = rectangles.iter().fold((0, 0), |(width, height), rect| {
-        (
-            max(width, rect.x + rect.width),
-            max(height, rect.y + rect.height),
-        )
-    });
-    let mut map = Map::<u16>::new(width, height);
-    for rect in &rectangles {
-        map.with_rectangle_mut(rect, |count| *count += 1);
-    }
-    let overlapped_area = map.cells().iter().cloned().filter(|&x| x > 1).count();
-    println!("overlapped area: {}", overlapped_area);
+    task_5(&rectangles);
+    task_6(&rectangles);
 }
