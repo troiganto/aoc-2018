@@ -17,17 +17,17 @@ fn power_levels(serial_number: u32) -> Grid {
     result
 }
 
-fn sum_of_3x3_square(grid: &Grid, topleft: (usize, usize)) -> i32 {
-    (0..3)
-        .flat_map(|x| (0..3).map(move |y| grid[topleft.0 + x][topleft.1 + y]))
+fn sum_of_square(grid: &Grid, topleft: (usize, usize), size: usize) -> i32 {
+    (0..size)
+        .flat_map(|x| (0..size).map(move |y| grid[topleft.0 + x][topleft.1 + y]))
         .sum()
 }
 
-fn find_max_3x3_square(grid: &Grid) -> (usize, usize) {
-    (0..300 - 2)
-        .flat_map(|x| (0..300 - 2).map(move |y| (x, y)))
-        .max_by_key(|&pos| sum_of_3x3_square(grid, pos))
-        .map(|(x, y)| (x + 1, y + 1))
+fn find_max_square(grid: &Grid, size: usize) -> (usize, usize, i32) {
+    (0..301 - size)
+        .flat_map(|x| (0..301 - size).map(move |y| (x, y, sum_of_square(grid, (x, y), size))))
+        .max_by_key(|&(_, _, fuel)| fuel)
+        .map(|(x, y, fuel)| (x + 1, y + 1, fuel))
         .unwrap()
 }
 
@@ -39,6 +39,14 @@ fn main() {
         buf.trim().parse::<u32>().unwrap()
     };
     let levels = power_levels(serial_number);
-    let (x, y) = find_max_3x3_square(&levels);
-    println!("max fuel at: {},{}", x, y);
+    let (x, y, _) = find_max_square(&levels, 3);
+    println!("max fuel at size 3: {},{}", x, y);
+    let (x, y, size, _) = (0..301usize)
+        .map(|size| {
+            let (x, y, fuel) = find_max_square(&levels, size);
+            (x, y, size, fuel)
+        })
+        .max_by_key(|&(_, _, _, fuel)| fuel)
+        .unwrap();
+    println!("max fuel: {},{},{}", x, y, size);
 }
