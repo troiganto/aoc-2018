@@ -44,11 +44,6 @@ struct Generation {
 }
 
 impl Generation {
-    fn reserve(&mut self, additional: usize) {
-        self.pots.reserve(additional);
-        self.backup.reserve(additional);
-    }
-
     fn progress(&mut self, rules: &RulesDict) {
         self.backup.clear();
         self.backup.push(Pot::Empty);
@@ -115,17 +110,6 @@ struct Rule {
     post: Pot,
 }
 
-impl Rule {
-    fn matches(&self, pots: &[Pot]) -> Option<Pot> {
-        assert!(pots.len() == self.pre.len());
-        if &self.pre[..] == pots {
-            Some(self.post)
-        } else {
-            None
-        }
-    }
-}
-
 type RulesDict = HashMap<[Pot; 5], Pot>;
 
 impl FromIterator<Rule> for RulesDict {
@@ -183,10 +167,29 @@ fn main() {
         .map(|line| line.unwrap().trim().parse::<Rule>())
         .collect::<Result<RulesDict, _>>()
         .unwrap();
-    for i in 0..=20 {
-        println!{"{}: {}", i, generation.checksum()};
+    let mut diff = 0;
+    let mut old;
+    let mut checksum = generation.checksum();
+    for i in 0..1000 {
+        old = checksum;
         generation.progress(&rules);
+        checksum = generation.checksum();
+        if i + 1 == 20 {
+            // Part 1.
+            println!("{}: {}", i + 1, checksum);
+        }
+        if i > 100 {
+            // Assert we've reached the asymptotic point by i=100.
+            assert_eq!(checksum - old, diff);
+        } else {
+            diff = checksum - old;
+        }
     }
+    // Assume we've reached the asymptotic point here. From here on, the
+    // checksum increases constantly by the same amount.
+    let almost_infinity = 50_000_000_000i64;
+    let result = checksum + diff * (almost_infinity - 1000);
+    println!("{}: {}", almost_infinity, result);
 }
 
 #[cfg(test)]
