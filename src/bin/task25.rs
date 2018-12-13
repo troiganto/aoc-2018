@@ -266,12 +266,67 @@ pub fn simulate_until_first_collision(charts: Vec<Chart>, map: &Map) -> Position
     }
 }
 
+pub fn simulate_until_one_chart_left(charts: Vec<Chart>, map: &Map) -> Position {
+    let mut charts = charts.into_iter().map(Some).collect::<Vec<_>>();
+    loop {
+        charts.sort_unstable_by_key(|c| c.as_ref().unwrap().pos);
+        for i in 0..charts.len() {
+            // Update the current chart's position.
+            if let Some(chart) = &mut charts[i] {
+                chart.step();
+                if let Some(&bend) = map.get(&chart.pos) {
+                    chart.react_to_bend(bend);
+                }
+            }
+            // Find a collision and mark both charts as dead if there is one.
+            let j = charts[i].as_ref().and_then(|chart| {
+                charts.iter().position(|c| match c {
+                    Some(c) => c.collides_with(chart),
+                    None => false,
+                })
+            });
+            if let Some(j) = j {
+                charts[i] = None;
+                charts[j] = None;
+            }
+        }
+        // Remove all dead charts. If there is one chart left, return it.
+        charts.retain(|chart| chart.is_some());
+        if charts.len() == 1 {
+            return charts[0].as_ref().unwrap().pos;
+        }
+    }
+}
+
 fn main() {
     let (map, charts) = {
         let mut buf = Vec::new();
         io::stdin().read_to_end(&mut buf).unwrap();
         read_map(&buf)
     };
-    let collision = simulate_until_first_collision(charts, &map);
+    let collision = simulate_until_first_collision(charts.clone(), &map);
     println!("first collision: {}", collision);
+    let winner = simulate_until_one_chart_left(charts, &map);
+    println!("last chart: {}", winner);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_one_chart_left() {
+        let (map, charts) = read_map(
+            br"/>-<\
+|   |
+| /<+-\
+| | | v
+\>+</ |
+  |   ^
+  \<->/
+",
+        );
+        let winner = simulate_until_one_chart_left(charts, &map);
+        assert_eq!(winner, Position { x: 6, y: 4 });
+    }
 }
