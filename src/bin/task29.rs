@@ -171,14 +171,6 @@ struct Unit {
 }
 
 impl Unit {
-    fn new(team: Team) -> Self {
-        Unit {
-            team,
-            hp: 200,
-            attack: 3,
-        }
-    }
-
     fn take_damage(&mut self, hp: u8) {
         self.hp = self.hp.saturating_sub(hp);
     }
@@ -572,9 +564,22 @@ fn main() {
     while let GameState::Going = game.make_turn() {}
     println!("completed turns: {}", game.completed_turns);
     println!("checksum: {}", game.checksum());
+    if game.defeated_elves == 0 {
+        println!("perfect game!");
+    } else {
+        for power in 4.. {
+            let mut game = Game::with_elven_power(&board, power);
+            while let GameState::Going = game.make_turn() {}
+            if game.defeated_elves == 0 {
+                println!("minimum power for perfect game: {}", power);
+                println!("perfect checksum: {}", game.checksum());
+                break;
+            }
+        }
+    }
 }
 
-// #[cfg(test)]
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -599,9 +604,10 @@ mod tests {
     fn assert_game(board: &[u8], attack: u8, turns: u64, hp: u64, defeated_elves: usize) -> Game {
         let mut game = Game::with_elven_power(board, attack);
         while let GameState::Going = game.make_turn() {}
-        assert_eq!(game.completed_turns, turns);
-        assert_eq!(game.checksum(), turns * hp);
-        assert_eq!(game.defeated_elves, defeated_elves);
+        assert_eq!(
+            (game.completed_turns, game.checksum(), game.defeated_elves),
+            (turns, turns * hp, defeated_elves),
+        );
         game
     }
 
@@ -750,25 +756,21 @@ mod tests {
                 (5, 5, Gnome, 200),
             ],
         );
+        assert_game(board, 15, 29, 172, 0);
     }
 
     #[test]
     fn test_combat2() {
         use self::Team::*;
-        let game = assert_game(
-            b"#######
+        let board = b"#######
 #G..#E#
 #E#E.E#
 #G.##.#
 #...#E#
 #...E.#
 #######
-",
-            3,
-            37,
-            982,
-            1,
-        );
+";
+        let game = assert_game(board, 3, 37, 982, 1);
         assert_units(
             &game,
             &[
@@ -784,20 +786,15 @@ mod tests {
     #[test]
     fn test_combat3() {
         use self::Team::*;
-        let game = assert_game(
-            b"#######
+        let board = b"#######
 #E..EG#
 #.#G.E#
 #E.##E#
 #G..#.#
 #..E#.#
 #######
-",
-            3,
-            46,
-            859,
-            1,
-        );
+";
+        let game = assert_game(board, 3, 46, 859, 1);
         assert_units(
             &game,
             &[
@@ -808,25 +805,21 @@ mod tests {
                 (2, 4, Elf, 200),
             ],
         );
+        assert_game(board, 4, 33, 948, 0);
     }
 
     #[test]
     fn test_combat4() {
         use self::Team::*;
-        let game = assert_game(
-            b"#######
+        let board = b"#######
 #E.G#.#
 #.#G..#
 #G.#.G#
 #G..#.#
 #...E.#
 #######
-",
-            3,
-            35,
-            793,
-            2,
-        );
+";
+        let game = assert_game(board, 3, 35, 793, 2);
         assert_units(
             &game,
             &[
@@ -837,25 +830,21 @@ mod tests {
                 (4, 5, Gnome, 200),
             ],
         );
+        assert_game(board, 15, 37, 94, 0);
     }
 
     #[test]
     fn test_combat5() {
         use self::Team::*;
-        let game = assert_game(
-            b"#######
+        let board = b"#######
 #.E...#
 #.#..G#
 #.###.#
 #E#G#G#
 #...#G#
 #######
-",
-            3,
-            54,
-            536,
-            2,
-        );
+";
+        let game = assert_game(board, 3, 54, 536, 2);
         assert_units(
             &game,
             &[
@@ -865,13 +854,13 @@ mod tests {
                 (5, 5, Gnome, 200),
             ],
         );
+        assert_game(board, 12, 39, 166, 0);
     }
 
     #[test]
     fn test_combat6() {
         use self::Team::*;
-        let game = assert_game(
-            b"#########
+        let board = b"#########
 #G......#
 #.E.#...#
 #..##..G#
@@ -880,12 +869,8 @@ mod tests {
 #.G...G.#
 #.....G.#
 #########
-",
-            3,
-            20,
-            937,
-            1,
-        );
+";
+        let game = assert_game(board, 3, 20, 937, 1);
         assert_units(
             &game,
             &[
@@ -896,6 +881,7 @@ mod tests {
                 (2, 5, Gnome, 200),
             ],
         );
+        assert_game(board, 34, 30, 38, 0);
     }
 
 }
