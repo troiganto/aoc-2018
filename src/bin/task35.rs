@@ -109,18 +109,22 @@ impl Map {
         self.backup = backup;
     }
 
-    fn total_resource_value(&self) -> usize {
-        let num_trees = self
-            .tiles
-            .iter()
-            .filter(|&&tile| tile == Tile::Tree)
-            .count();
-        let num_yards = self
-            .tiles
+    fn num_yards(&self) -> usize {
+        self.tiles
             .iter()
             .filter(|&&tile| tile == Tile::Yard)
-            .count();
-        num_trees * num_yards
+            .count()
+    }
+
+    fn num_trees(&self) -> usize {
+        self.tiles
+            .iter()
+            .filter(|&&tile| tile == Tile::Tree)
+            .count()
+    }
+
+    fn total_resource_value(&self) -> usize {
+        self.num_trees() * self.num_yards()
     }
 
     fn neighbors(&self, i: usize) -> Neighbors<'_> {
@@ -229,16 +233,53 @@ pub fn simulator(mut map: Map, minutes: usize) -> String {
     output
 }
 
+pub fn cycle_len_at_end<T: PartialEq>(items: &[T]) -> usize {
+    for len in 1..=items.len() / 2 {
+        let mut chunks = items.rchunks(len);
+        match (chunks.next(), chunks.next()) {
+            (Some(l), Some(r)) if l == r => return len,
+            _ => {},
+        }
+    }
+    0
+}
+
 fn main() {
     let mut map: Map = {
         let mut buf = String::new();
         io::stdin().read_to_string(&mut buf).unwrap();
         buf.parse().unwrap()
     };
-    for _ in 0..10 {
+    let mut resources = Vec::with_capacity(1000);
+    for i in 0..1000 {
+        if i == 10 {
+            println!("after 10 minutes: {}", map.total_resource_value());
+        }
+        resources.push((map.num_trees(), map.num_yards()));
         map.step_one_minute();
     }
-    println!("checksum: {}", map.total_resource_value());
+    let cycle_len = {
+        let cycle_len = cycle_len_at_end(&resources);
+        if cycle_len == 0 {
+            panic!("no cycle found");
+        }
+        let mut clone = map.clone();
+        for _ in 0..cycle_len {
+            clone.step_one_minute();
+        }
+        if clone != map {
+            panic!("cycle not reliable");
+        }
+        cycle_len
+    };
+    println!("cycle length: {}", cycle_len);
+    let cycle = &resources[resources.len() - cycle_len..];
+    assert_eq!(cycle[0], (map.num_trees(), map.num_yards()));
+    let final_values = cycle[(1_000_000_000 - resources.len()) % cycle.len()];
+    println!(
+        "after 1_000_000_000 minutes: {}",
+        final_values.0 * final_values.1,
+    );
 }
 
 #[cfg(test)]
