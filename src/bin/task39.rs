@@ -82,7 +82,30 @@ impl Walker {
 #[derive(Debug)]
 struct Room {
     came_from: char,
-    distance: usize,
+    distance: Option<usize>,
+}
+
+fn walk_to_start(start: Point, rooms: &HashMap<Point, Room>) -> WalkPath<'_> {
+    WalkPath { pos: start, rooms }
+}
+
+struct WalkPath<'a> {
+    pos: Point,
+    rooms: &'a HashMap<Point, Room>,
+}
+
+impl<'a> Iterator for WalkPath<'a> {
+    type Item = (Point, &'a Room);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let current_pos = self.pos;
+        if let Some(room) = self.rooms.get(&self.pos) {
+            self.pos = self.pos.step(room.came_from);
+            Some((current_pos, room))
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -127,14 +150,14 @@ fn handle_direction(dir: char, walkers: &mut [Walker], rooms: &mut HashMap<Point
         walker.walk(dir);
         let room = Room {
             came_from: opposite_dir(dir),
-            distance: walker.walked,
+            distance: Some(walker.walked),
         };
         match rooms.entry(walker.pos) {
             Entry::Vacant(entry) => {
                 entry.insert(room);
             },
             Entry::Occupied(mut entry) => {
-                if walker.walked < entry.get().distance {
+                if walker.walked < entry.get().distance.unwrap() {
                     *entry.get_mut() = room;
                 }
             },
@@ -170,17 +193,35 @@ fn walk_path(path: &str) -> HashMap<Point, Room> {
 }
 
 fn distance_to_furthest_room(rooms: &HashMap<Point, Room>) -> usize {
-    let mut pos = rooms
+    let pos = rooms
         .iter()
         .max_by_key(|(_, Room { distance, .. })| distance)
         .map(|(&pos, _)| pos)
         .unwrap();
-    let mut steps = 0;
-    while pos != Point::default() {
-        pos = pos.step(rooms[&pos].came_from);
-        steps += 1;
+    walk_to_start(pos, &rooms).count()
+}
+
+fn optimize_distances(rooms: &mut HashMap<Point, Room>) {
+    rooms.values_mut().for_each(|room| room.distance = None);
+    while let Some(pos) = rooms
+        .iter()
+        .find(|(_, room)| room.distance.is_none())
+        .map(|(&pos, _)| pos)
+    {
+        let mut visited = Vec::new();
+        let mut offset = 1;
+        for (pos, room) in walk_to_start(pos, &rooms) {
+            if let Some(distance) = room.distance {
+                offset += distance;
+                break;
+            } else {
+                visited.push(pos);
+            }
+        }
+        for (i, pos) in visited.into_iter().rev().enumerate() {
+            rooms.get_mut(&pos).unwrap().distance = Some(i + offset);
+        }
     }
-    steps
 }
 
 fn main() {
@@ -189,6 +230,12 @@ fn main() {
         io::stdin().read_to_string(&mut buf).unwrap();
         buf
     };
-    let rooms = walk_path(path.trim_start_matches('^').trim_end_matches("$\n"));
+    let mut rooms = walk_path(path.trim_start_matches('^').trim_end_matches("$\n"));
     println!("part 1: {}", distance_to_furthest_room(&rooms));
+    optimize_distances(&mut rooms);
+    let far_rooms = rooms
+        .values()
+        .filter(|room| room.distance.unwrap() >= 1000)
+        .count();
+    println!("part 2: {}", far_rooms)
 }
