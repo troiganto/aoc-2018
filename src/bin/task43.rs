@@ -1,5 +1,6 @@
+use boolinator::Boolinator;
 use std::{
-    collections::hash_map::{Entry, HashMap},
+    collections::HashMap,
     io::{self, Read},
 };
 
@@ -43,12 +44,42 @@ pub enum Tool {
     Neither,
 }
 
+impl Default for Tool {
+    fn default() -> Self {
+        Tool::Torch
+    }
+}
+
+impl Tool {
+    #[must_use]
+    pub fn switch(self, tile: &Tile) -> Self {
+        match (tile, self) {
+            (Tile::Rocky, Tool::Climbing) => Tool::Torch,
+            (Tile::Rocky, Tool::Torch) => Tool::Climbing,
+            (Tile::Wet, Tool::Climbing) => Tool::Neither,
+            (Tile::Wet, Tool::Neither) => Tool::Climbing,
+            (Tile::Narrow, Tool::Torch) => Tool::Neither,
+            (Tile::Narrow, Tool::Neither) => Tool::Torch,
+            _ => panic!("bad tool for region: {:?} in {:?}", self, tile),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum Tile {
     Rocky,
     Wet,
     Narrow,
+}
+
+pub fn is_compatible(tool: &Tool, tile: &Tile) -> bool {
+    match (tool, tile) {
+        (Tool::Neither, Tile::Rocky)
+        | (Tool::Torch, Tile::Wet)
+        | (Tool::Climbing, Tile::Narrow) => false,
+        _ => true,
+    }
 }
 
 impl Tile {
@@ -122,6 +153,29 @@ fn iter_scanlines(depth: usize, size: Point) -> Scanlines {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct State {
+    pos: Point,
+    tool: Tool,
+}
+
+impl State {
+    pub fn distance(&self, other: &Self) -> usize {
+        let dx = if self.pos.x > other.pos.x {
+            self.pos.x - other.pos.x
+        } else {
+            other.pos.x - self.pos.x
+        };
+        let dy = if self.pos.y > other.pos.y {
+            self.pos.y - other.pos.y
+        } else {
+            other.pos.y - self.pos.y
+        };
+        let dt = if self.tool == other.tool { 0 } else { 7 };
+        dx + dy + dt
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Map {
     tiles: Vec<Tile>,
@@ -140,25 +194,114 @@ impl Map {
         map[target] = Tile::Rocky;
         map
     }
+
+    pub fn neighbors(&self, center: State) -> Neighbors {
+        Neighbors {
+            map: self,
+            center,
+            i: 0,
+        }
+    }
+
+    pub fn find_route(&self) -> Option<usize> {
+        let target = State {
+            pos: self.target,
+            tool: Tool::Torch,
+        };
+        let mut visited = HashMap::<State, usize>::new();
+        let mut open = HashMap::<State, usize>::new();
+        open.insert(State::default(), 0);
+        visited.insert(State::default(), 0);
+        while let Some((&current, &time_taken)) = open
+            .iter()
+            .min_by_key(|&(state, &time_taken)| time_taken + state.distance(&target))
+        {
+            open.remove(&current);
+            if current == target {
+                return Some(time_taken);
+            }
+            for neighbor in self.neighbors(current) {
+                let new_time = time_taken + current.distance(&neighbor);
+                visited
+                    .entry(neighbor)
+                    .and_modify(|old_record| {
+                        if new_time < *old_record {
+                            open.insert(neighbor, new_time);
+                            *old_record = new_time;
+                        }
+                    })
+                    .or_insert_with(|| {
+                        open.insert(neighbor, new_time);
+                        new_time
+                    });
+            }
+        }
+        None
+    }
 }
 
 impl std::ops::Index<Point> for Map {
     type Output = Tile;
     fn index(&self, idx: Point) -> &Self::Output {
+        assert!(
+            idx.x < self.size.x && idx.y < self.size.y,
+            "{:?} out of bounds for map of size {:?}",
+            idx,
+            self.size,
+        );
         &self.tiles[idx.y * self.size.x + idx.x]
     }
 }
 
 impl std::ops::IndexMut<Point> for Map {
     fn index_mut(&mut self, idx: Point) -> &mut Self::Output {
+        assert!(
+            idx.x < self.size.x && idx.y < self.size.y,
+            "{:?} out of bounds for map of size {:?}",
+            idx,
+            self.size,
+        );
         &mut self.tiles[idx.y * self.size.x + idx.x]
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct State {
-    pos: Point,
-    tool: Tool,
+pub struct Neighbors<'a> {
+    map: &'a Map,
+    center: State,
+    i: usize,
+}
+
+impl<'a> Iterator for Neighbors<'a> {
+    type Item = State;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let State { pos, tool } = self.center;
+        loop {
+            let item = match self.i {
+                0 => pos.up().and_then(|pos| {
+                    is_compatible(&tool, &self.map[pos]).as_some(State { pos, tool })
+                }),
+                1 => pos.down().and_then(|pos| {
+                    is_compatible(&tool, &self.map[pos]).as_some(State { pos, tool })
+                }),
+                2 => pos.left().and_then(|pos| {
+                    is_compatible(&tool, &self.map[pos]).as_some(State { pos, tool })
+                }),
+                3 => pos.right().and_then(|pos| {
+                    is_compatible(&tool, &self.map[pos]).as_some(State { pos, tool })
+                }),
+                4 => Some(State {
+                    pos,
+                    tool: tool.switch(&self.map[pos]),
+                }),
+                _ => break None,
+            };
+            self.i += 1;
+            if item.is_some() {
+                break item;
+            }
+        }
+    }
 }
 
 fn parse_input(s: &str) -> (usize, Point) {
@@ -192,4 +335,8 @@ fn main() {
     .map(|t| t.risk() as u32)
     .sum::<u32>();
     println!("risk: {}", risk);
+    let time = Map::new(depth, Point { x: 1500, y: 1500 }, target)
+        .find_route()
+        .unwrap();
+    println!("time: {}", time);
 }
