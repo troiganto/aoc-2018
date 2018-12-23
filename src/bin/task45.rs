@@ -1,6 +1,7 @@
 use boolinator::Boolinator;
 use std::{
     borrow::Borrow,
+    collections::BTreeMap,
     fmt,
     io::{self, BufRead},
     num::ParseIntError,
@@ -35,6 +36,10 @@ struct Point {
 }
 
 impl Point {
+    fn signed_norm(&self) -> i64 {
+        self.x + self.y + self.z
+    }
+
     fn distance(&self, other: &Self) -> i64 {
         (other.x - self.x).abs() + (other.y - self.y).abs() + (other.z - self.z).abs()
     }
@@ -73,6 +78,7 @@ impl Bot {
         self.pos.distance(pos) <= self.radius
     }
 }
+
 impl FromStr for Bot {
     type Err = ParseError;
 
@@ -97,16 +103,6 @@ impl FromStr for Bot {
     }
 }
 
-fn count_bots_in_range<I>(bots: I, pos: &Point) -> usize
-where
-    I: IntoIterator,
-    I::Item: Borrow<Bot>,
-{
-    bots.into_iter()
-        .filter(|bot| bot.borrow().is_in_range(pos))
-        .count()
-}
-
 fn count_points_in_range<I>(points: I, bot: &Bot) -> usize
 where
     I: IntoIterator,
@@ -116,6 +112,29 @@ where
         .into_iter()
         .filter(|p| bot.is_in_range(p.borrow()))
         .count()
+}
+
+fn find_best_point(bots: &[Bot]) -> i64 {
+    let mut events = BTreeMap::new();
+    for Bot { pos, radius } in bots {
+        *events.entry(pos.signed_norm() - radius).or_insert(0) += 1;
+        *events.entry(pos.signed_norm() + radius + 1).or_insert(0) -= 1;
+    }
+    let (max_start, _) = events
+        .iter()
+        .scan(0, |running, (&pos, &count)| {
+            *running += count;
+            Some((pos, *running))
+        })
+        .fold((0, 0), |(max_start, max), (pos, running)| {
+            if running > max {
+                (pos, running)
+            } else {
+                (max_start, max)
+            }
+        });
+    let max_end = *events.keys().find(|&&v| v > max_start).unwrap();
+    max_end - 1
 }
 
 fn main() {
@@ -131,13 +150,5 @@ fn main() {
         "in range: {}",
         count_points_in_range(bots.iter().map(|bot| bot.pos), &strongest),
     );
-    let mut c = bots
-        .iter()
-        .map(|bot| count_bots_in_range(&bots, &bot.pos))
-        .collect::<Vec<_>>();
-    c.sort();
-    c.reverse();
-    for i in &c[c[0]..] {
-        println!("{}", i);
-    }
+    println!("best: {}", find_best_point(&bots));
 }
